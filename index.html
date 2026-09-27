@@ -1458,6 +1458,42 @@ document.getElementById('addFolderBtn').onclick=()=>{
 };
 document.getElementById('binItem').onclick=()=>{ showBin=true; currentTag=null; selectedNoteIds.clear(); renderAll(); if(window.innerWidth<=820) mobileShow('list'); };
 
+document.getElementById('exportBtn').onclick=()=>{
+  showModal('Export vault (encrypted)',[{id:'pw',ph:'Set export password (min '+MIN_PW_LEN+' chars)',type:'password'}],async vals=>{
+    if(!vals.pw || vals.pw.length<MIN_PW_LEN){ toast('Password must be at least '+MIN_PW_LEN+' characters'); return false; }
+    try{
+      const payload=JSON.stringify(state);
+      const pack=await encryptStr(payload, vals.pw);
+      const blob=new Blob([JSON.stringify(pack)],{type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='vault-notes-'+Date.now()+'.vault';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('Exported — keep the password safe, it cannot be recovered');
+    }catch(e){ toast('Export failed: '+(e&&e.message?e.message:'unknown error')); return false; }
+  });
+};
+document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
+document.getElementById('importFile').onchange=()=>{
+  const f=document.getElementById('importFile').files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    let pack; try{ pack=JSON.parse(r.result); }catch(e){ toast('Not a valid vault file'); return; }
+    showModal('Import vault',[{id:'pw',ph:'Enter export password',type:'password'}],async vals=>{
+      try{
+        const json=await decryptStr(pack, vals.pw);
+        const incoming=JSON.parse(json);
+        const merge=confirm('OK to MERGE with your current notes, Cancel to REPLACE everything.');
+        if(merge){ incoming.folders.forEach(f=>!state.folders.includes(f)&&state.folders.push(f)); state.notes=state.notes.concat(incoming.notes); }
+        else { state=incoming; }
+        unlockedCache={}; save(); toast('Import complete'); renderAll();
+      }catch(e){ toast('Wrong password or corrupt file'); return false; }
+    });
+  };
+  r.readAsText(f);
+  document.getElementById('importFile').value='';
+};
+
 document.getElementById('backToSide') && (document.getElementById('backToSide').onclick=()=>mobileShow('side'));
 
 function renderAll(){ renderSide(); renderList(); renderEditor(); if(window.innerWidth<=820 && !currentNoteId) mobileShow('list'); }
