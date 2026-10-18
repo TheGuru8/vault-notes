@@ -86,10 +86,13 @@ Vault Notes is a **single HTML file**. It is designed to be compiled into an APK
 
 ## ⚠️ Security Disclaimer
 
-Vault Notes is designed to keep your data local and private. However, because it runs in an Android WebView:
-1.  **Unlocked notes are stored in plaintext** in the app's internal database. Only notes you explicitly "Lock" are encrypted at rest.
-2.  Vault Notes cannot protect against a compromised device, keyloggers, or a nation-state forensic extraction of a rooted phone. 
-3.  **There is no password recovery.** If you forget the password to a locked note or an encrypted backup file, the data is mathematically unrecoverable.
+Vault Notes is designed to keep your data local and private. However, because it runs in an Android WebView, you should understand the limits of its security model:
+
+1. **Unlocked notes are stored in plaintext.** Only notes you explicitly "Lock" are encrypted at rest. Anyone with access to the app's data directory (via root, ADB, or a compromised device) can read unlocked notes, folder names, and tags.
+2. **Locked notes are cryptographically secure.** If you lock a note with a strong, unique password (12+ characters), its contents cannot be read by a forensic extraction of the phone. The encryption (AES-GCM + PBKDF2) holds up against brute-force attacks.
+3. **Metadata and attachments leak.** Even on a locked note, the existence of the note is visible, and any attachments (PDFs, images, etc.) attached to the note are stored in plaintext alongside the encrypted note body.
+4. **Compromised devices.** Vault Notes cannot protect against active malware, keyloggers, or a compromised operating system that captures your screen or keystrokes while the app is unlocked.
+5. **There is no password recovery.** If you forget the password to a locked note or an encrypted backup file, the data is mathematically unrecoverable. Not even the developer can bypass it.
 
 ---
 
