@@ -61,6 +61,7 @@ input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;col
 .batch-bar{padding:8px 12px;background:var(--tb-hover);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:calc(12px*var(--fs));min-height:41px}
 .batch-bar label{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600}
 .batch-actions{display:flex;gap:6px; position: relative;}
+.btn-batch-restore{background:#4c9a2a;color:#fff;padding:4px 8px;border-radius:6px;font-size:calc(11px*var(--fs));font-weight:600}
 .btn-batch-del{background:var(--danger);color:#fff;padding:4px 8px;border-radius:6px;font-size:calc(11px*var(--fs));font-weight:600}
 .btn-batch-move{background:var(--accent);color:#fff;padding:4px 8px;border-radius:6px;font-size:calc(11px*var(--fs));font-weight:600}
 .btn-batch-action{background:var(--accent-light);color:var(--ink);padding:4px 8px;border-radius:6px;font-size:calc(11px*var(--fs));font-weight:600}
@@ -245,8 +246,8 @@ input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;col
 mark.find-match{background:var(--mark-bg);color:var(--mark-fg);border-radius:2px}
 
 /* TABLES */
-.content table{border-collapse:collapse;max-width:100%;margin:10px 0;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px var(--line)}
-.content td,.content th{border:1px solid var(--line);padding:8px 12px;min-width:48px;vertical-align:top;word-break:break-word;position:relative}
+.content table{border-collapse:collapse;margin:10px 0;border-radius:8px;box-shadow:0 0 0 1px var(--line);width:max-content;min-width:100%}
+.content td,.content th{border:1px solid var(--line);padding:8px 12px;min-width:48px;vertical-align:top;position:relative;overflow-wrap:break-word;word-break:normal}
 .content th{background:var(--accent-light);font-weight:600}
 .content td:focus, .content th:focus{outline:2px solid var(--accent);outline-offset:-2px}
 .content table.va-header-row > tbody > tr:first-child > td,
@@ -403,6 +404,8 @@ textarea.mdsrc{width:100%;height:100%;min-height:100%;border:none;outline:none;r
 .filter-foot .cancel{background:var(--row-hover);color:var(--ink)}
 .filter-foot .apply{background:var(--accent);color:#fff}
 
+.table-widen-btn{display:none}
+.toolbar.in-table .table-widen-btn{display:inline-flex}
 /* TABLE EDITOR MODAL */
 .table-modal{
   background:var(--white);
@@ -640,7 +643,8 @@ textarea.mdsrc{width:100%;height:100%;min-height:100%;border:none;outline:none;r
       <label><input type="checkbox" id="selectAllCB"> Select All</label>
       <div class="batch-actions hidden" id="batchActions">
         <button class="btn-batch-action" id="batchMoreBtn">⋯ More Actions</button>
-        <div class="batch-dropdown" id="batchDropdown">
+       <div class="batch-dropdown" id="batchDropdown">
+          <button class="btn-batch-restore hidden" id="batchRestoreBtn">♻ Restore Selected</button>
           <button class="btn-batch-move" id="batchMoveBtn">📁 Move to Folder</button>
           <button class="btn-batch-action" id="batchAddTagBtn">🏷 Add tag…</button>
           <button class="btn-batch-action" id="batchRemoveTagBtn">🏷 Remove tag…</button>
@@ -1742,8 +1746,8 @@ function openTab(noteId, opts){
     while(openTabs.length > MAX_TABS){ openTabs.shift(); }
   }
   activeTabId = noteId;
+  showBin = false;
   if(opts.silent !== true){
-    showBin=false;
     renderAll();
     if(window.innerWidth<=820) mobileShow('editor');
   } else {
@@ -2035,6 +2039,21 @@ function deleteFolder(folderName){
     save(); toast(`Folder "${folderName}" deleted`); renderAll();
   }
 }
+function handleBatchRestore(){
+  if(selectedNoteIds.size === 0){ toast('No notes selected'); return; }
+  const toRestore = [...selectedNoteIds].filter(id => { const n = getNote(id); return n && n.deleted; });
+  if(!toRestore.length){ toast('No deleted notes selected'); return; }
+  toRestore.forEach(id => {
+    const n = getNote(id);
+    n.deleted = false;
+    delete n.deletedAt;
+    n.updatedAt = Date.now();
+  });
+  selectedNoteIds.clear();
+  save();
+  toast('Restored ' + toRestore.length + ' note(s)');
+  renderAll();
+}
 function handleBatchDelete(){
   if(selectedNoteIds.size === 0){ toast('No notes selected'); return; }
   if(showBin){
@@ -2042,6 +2061,7 @@ function handleBatchDelete(){
       state.notes = state.notes.filter(n => !selectedNoteIds.has(n.id));
       openTabs = openTabs.filter(id=>getNote(id));
       if(activeTabId && !getNote(activeTabId)) activeTabId = openTabs[openTabs.length-1] || null;
+      if(!openTabs.length) activeTabId = null;
       selectedNoteIds.clear(); save(); saveTabs(); toast('Selected notes permanently deleted'); renderAll();
     }
   } else {
@@ -2193,14 +2213,37 @@ function renderList(){
   const titleEl = document.getElementById('listTitle');
   titleEl.innerHTML = esc(baseTitle) + (filtered?' <span class="filtered-pill">Filtered</span>':'');
   updateFilterButtonBadge();
+document.getElementById('batchDeleteBtn').textContent = showBin ? '🗑 Delete Permanently' : '🗑 Delete Selected';
 
   const binCount = state.notes.filter(n=>n.deleted).length;
   const emptyBinBtn = document.getElementById('emptyBinBtn');
   if(showBin && binCount > 0){ emptyBinBtn.classList.remove('hidden'); emptyBinBtn.onclick = emptyBin; }
   else { emptyBinBtn.classList.add('hidden'); }
   document.getElementById('quickAddBtn').classList.toggle('hidden', showBin);
-  const batchMoveBtn = document.getElementById('batchMoveBtn');
-  if(showBin){ batchMoveBtn.classList.add('hidden'); } else { batchMoveBtn.classList.remove('hidden'); }
+const batchMoveBtn = document.getElementById('batchMoveBtn');
+const batchRestoreBtn = document.getElementById('batchRestoreBtn');
+const batchAddTagBtn = document.getElementById('batchAddTagBtn');
+const batchRemoveTagBtn = document.getElementById('batchRemoveTagBtn');
+const batchHideBtn = document.getElementById('batchHideBtn');
+const batchCopyBtn = document.getElementById('batchCopyBtn');
+const batchExportBtn = document.getElementById('batchExportBtn');
+if(showBin){
+  batchMoveBtn.classList.add('hidden');
+  batchRestoreBtn.classList.remove('hidden');
+  batchAddTagBtn.classList.add('hidden');
+  batchRemoveTagBtn.classList.add('hidden');
+  batchHideBtn.classList.add('hidden');
+  batchCopyBtn.classList.add('hidden');
+  batchExportBtn.classList.add('hidden');
+} else {
+  batchMoveBtn.classList.remove('hidden');
+  batchRestoreBtn.classList.add('hidden');
+  batchAddTagBtn.classList.remove('hidden');
+  batchRemoveTagBtn.classList.remove('hidden');
+  batchHideBtn.classList.remove('hidden');
+  batchCopyBtn.classList.remove('hidden');
+  batchExportBtn.classList.remove('hidden');
+}
   const batchBar = document.getElementById('batchBar');
   const batchActions = document.getElementById('batchActions');
   if (selectedNoteIds.size > 0) { batchBar.classList.remove('hidden'); batchActions.classList.remove('hidden'); }
@@ -2489,6 +2532,7 @@ function setColumnWidth(table, colIndex, widthStr){
 }
 
 function openTableModal(){
+setTimeout(refreshTableButtons, 0);
   const ctx = getTableContext();
   if(!ctx){ toast('Put the cursor in a table cell first'); return; }
   let { table, cell, row, cellIndex, rowIndex } = ctx;
@@ -3004,6 +3048,8 @@ function fullEditor(n){
       <button id="attachBtn" title="Attach file (PDF, doc, etc.)">📎</button>
       <button id="sketchBtn" title="Sketch / handwriting">✍</button>
       <button id="tableBtn" title="Table">▦</button>
+      <button class="table-widen-btn" id="tableWidenBtn" title="Widen all columns">↔+</button>
+<button class="table-widen-btn" id="tableNarrowBtn" title="Narrow all columns">↔−</button>
       <button id="noteLinkBtn" title="Link to another note">📄</button>
     </div>
     ${n.locked?'':'<div class="tb-grp">'+
@@ -3546,6 +3592,10 @@ function bindEditor(n){
   const noteLinkBtn=document.getElementById('noteLinkBtn');
   if(noteLinkBtn) noteLinkBtn.onclick=()=>{ const r=captureRange(), sel=window.getSelection().toString().trim(); openNotePicker(n.id,t=>insertAtRange(r,'<a href="#" data-note="'+t.id+'">'+esc(sel||t.title)+'</a>&nbsp;')); };
   if(content) content.addEventListener('click',e=>{ const a=e.target.closest&&e.target.closest('a[data-note]'); if(a){ e.preventDefault(); openNoteById(a.dataset.note); } });
+  const widenBtn = document.getElementById('tableWidenBtn');
+if(widenBtn) widenBtn.onclick = (e)=>{ e.preventDefault(); adjustTableWidth(40); };
+const narrowBtn = document.getElementById('tableNarrowBtn');
+if(narrowBtn) narrowBtn.onclick = (e)=>{ e.preventDefault(); adjustTableWidth(-40); };
   const tableBtn=document.getElementById('tableBtn');
   if(tableBtn) tableBtn.onclick=()=>{
     const ctx = getTableContext();
@@ -4053,6 +4103,29 @@ function openLockModal(n){
   };
 }
 function openMoveCopyModal(n){
+if(n.deleted){
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML='<div class="modal"><h3>'+esc(n.title||'Untitled')+'</h3>'+
+    '<button class="opt" id="mcRestore" style="width:100%;text-align:left;border-radius:12px;margin-bottom:8px;background:#4c9a2a;color:#fff">♻ Restore</button>'+
+    '<button class="opt" id="mcPurge" style="width:100%;text-align:left;border-radius:12px;color:var(--danger)">🗑 Delete forever</button>'+
+    '<div class="row"><button class="ghost" id="mcCancel2">Cancel</button></div></div>';
+  document.body.appendChild(bg);
+  bg.querySelector('#mcCancel2').onclick=()=>bg.remove();
+  bg.querySelector('#mcRestore').onclick=()=>{
+    n.deleted=false; delete n.deletedAt; n.updatedAt=Date.now();
+    save(); bg.remove(); toast('Restored'); renderAll();
+  };
+  bg.querySelector('#mcPurge').onclick=()=>{
+    if(!confirm('Permanently delete this note?')) return;
+    state.notes=state.notes.filter(x=>x.id!==n.id);
+    openTabs=openTabs.filter(id=>id!==n.id);
+    if(activeTabId===n.id) activeTabId=openTabs[openTabs.length-1]||null;
+    if(!openTabs.length) activeTabId=null;
+    save(); saveTabs(); bg.remove(); toast('Deleted forever'); renderAll();
+  };
+  bg.addEventListener('click', e=>{ if(e.target===bg) bg.remove(); });
+  return;
+}
   const bg=document.createElement('div'); bg.className='modal-bg';
   const attList = (n.attachments||[]);
   const attSection = attList.length ? (
@@ -4599,7 +4672,53 @@ document.getElementById('appLockSettingsBtn').onclick=openAppLockSettingsModal;
 document.getElementById('globalSearchBtn').onclick=openGlobalSearch;
 document.getElementById('titleSearchInput').oninput=(e)=>{ titleSearchQuery = e.target.value; renderList(); };
 document.getElementById('sortSelect').onchange=(e)=>{ currentSortMode = e.target.value; renderList(); };
+function adjustTableWidth(delta){
+  const ctx = getTableContext();
+  if(!ctx){ toast('Put the cursor in a table cell first'); return; }
+  const content = document.getElementById('content');
+  if(activeTabId && content) pushUndo(activeTabId, stripCopyButtons(content.innerHTML), true);
+  const table = ctx.table;
+  const cols = Math.max(...Array.from(table.rows).map(r => r.cells.length));
+  let colgroup = table.querySelector('colgroup');
+  if(!colgroup){
+    colgroup = document.createElement('colgroup');
+    for(let i = 0; i < cols; i++) colgroup.appendChild(document.createElement('col'));
+    table.insertBefore(colgroup, table.firstChild);
+  }
+  while(colgroup.children.length < cols) colgroup.appendChild(document.createElement('col'));
+  for(const col of colgroup.children){
+    const cur = parseInt(col.style.width, 10) || Math.round(table.offsetWidth / cols);
+    col.style.width = Math.max(40, cur + delta) + 'px';
+  }
+  saveContentFromTable();
+}
+function refreshTableButtons(){
+  const toolbar = document.querySelector('.toolbar');
+  if(!toolbar) return;
+  toolbar.classList.toggle('in-table', !!getTableContext());
+}
+document.addEventListener('selectionchange', refreshTableButtons);
+document.addEventListener('click', ()=>setTimeout(refreshTableButtons, 0), true);
+document.addEventListener('keyup', ()=>setTimeout(refreshTableButtons, 0), true);
+document.addEventListener('touchend', ()=>setTimeout(refreshTableButtons, 0), true);
+document.addEventListener('touchend', (e)=>{
+  const t = e.target;
+  const inCell = t && t.closest && t.closest('td, th');
+  if(!inCell){
+    const toolbar = document.querySelector('.toolbar');
+    if(toolbar) toolbar.classList.remove('in-table');
+  }
+}, true);
+document.addEventListener('mousedown', (e)=>{
+  const t = e.target;
+  const inCell = t && t.closest && t.closest('td, th');
+  if(!inCell){
+    const toolbar = document.querySelector('.toolbar');
+    if(toolbar) toolbar.classList.remove('in-table');
+  }
+}, true);
 document.getElementById('batchDeleteBtn').onclick=handleBatchDelete;
+document.getElementById('batchRestoreBtn').onclick=handleBatchRestore;
 document.getElementById('batchMoveBtn').onclick=handleBatchMove;
 document.getElementById('batchAddTagBtn').onclick = (e)=>{ e.stopPropagation(); document.getElementById('batchDropdown').classList.remove('show'); handleBatchAddTag(); };
 document.getElementById('batchRemoveTagBtn').onclick = (e)=>{ e.stopPropagation(); document.getElementById('batchDropdown').classList.remove('show'); handleBatchRemoveTag(); };
